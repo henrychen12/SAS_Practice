@@ -9,19 +9,19 @@
 
 data work.staff;                             #Create temp dataset work.staff
   infile 'emplist.dat';                      #grab data from 'emplist.dat'
-  input LastName $ 1-20 FirstName $ 21-30    #
+  input LastName $ 1-20 FirstName $ 21-30    #grab variables
         JobTitle $ 36-43 Salary 54-59;
 run;
 
 
 # 2. Proc Step:
 
-proc print data=work.staff;
+proc print data=work.staff;                  #Create listing report where data is work.staff
 run;
 
-proc means data=work.staff mean max;
-  class JobTitle;
-  var Salary;
+proc means data=work.staff mean max;         #Calculate mean (Average) and max value from Salary data in each JobTitle entry
+  class JobTitle;                            #Choose from each Jobtitle
+  var Salary;                                #calculate from variables in the Salary catagory
  run;
  
  #Data step creates a new temporary SAS dataset called WORK.STAFF by reading variables described in the INPUT statement
@@ -29,4 +29,3 @@ proc means data=work.staff mean max;
  
  #PROC PRINT step creates a listing report of the WORK.STAFF Dataset
  #PROC MEANS step creates a report summarizing the average (MEAN) and maximum (MAX) SALARY for each value of JOBTITLE
- 
