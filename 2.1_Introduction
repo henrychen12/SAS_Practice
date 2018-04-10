@@ -5,8 +5,28 @@
 
 #Sample:
 
+# 1. Data Step:
+
 data work.staff;
   infile 'emplist.dat';
   input LastName $ 1-20 FirstName $ 21-30
         JobTitle $ 36-43 Salary 54-59;
 run;
+
+
+# 2. Proc Step:
+
+proc print data=work.staff;
+run;
+
+proc means data=work.staff mean max;
+  class JobTitle;
+  var Salary;
+ run;
+ 
+ #Data step creates a new temporary SAS dataset called WORK.STAFF by reading variables described in the INPUT statement
+ from the EMPLIST.DAT raw data file
+ 
+ #PROC PRINT step creates a listing report of the WORK.STAFF Dataset
+ #PROC MEANS step creates a report summarizing the average (MEAN) and maximum (MAX) SALARY for each value of JOBTITLE
+ 
