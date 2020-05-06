@@ -1,0 +1,114 @@
+*/ Those statements must be executed on scanner computer with proper permissions for regular processing*;
+
+*x cd /d U:  ;
+*x dir /b /s /a:d > C:\temp\u_folders.txt  ;
+
+*Path subject to change based on u_folders location;
+
+options mprint symbolgen;
+
+%let Audit=%str(C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Scanning Audit);
+
+*Alternative Path: D:\Dropbox\Work\SAS Projects and HW\Scanning Audit;
+
+libname Audit "&Audit";
+filename raw ('u_folders.txt');
+
+*Check for Filing Errors;
+
+
+data Audit.error;
+infile raw missover;
+input scanned_sampid 8-13 error 15-20;
+run;
+proc print data=Audit.error;
+title "Filing Errors to be Manuallay Checked on";
+where error ne .;
+run;
+
+*Import both FTS and MSS IDs;
+
+data Audit.u_raw;
+infile raw missover;
+input scanned_sampid 8-13;
+run;
+
+*Extract FTS IDs and MSS IDs;
+
+data Audit.FTS Audit.MSS;
+set Audit.u_raw;
+if scanned_sampid le 899999 then output Audit.FTS;
+if scanned_sampid ge 940000 then output Audit.MSS;
+run;
+
+*Creating Macro to define min/max in FTS dataset;
+
+proc sql;
+title "Min/Max for FTS";
+   select max(scanned_sampid) into :maxscan
+   from Audit.FTS;
+   select min(scanned_sampid) into :minscan 
+   from Audit.FTS;
+quit;
+%put ids are: &maxscan;
+%put ids are: &minscan;
+
+*Using created Macro to generate theoratical FTS list;
+
+data Audit.FTS_master;
+do Master=&minscan to &maxscan;
+output;
+end;
+run;
+
+*A query to filter missing FTS files;
+
+proc sql;
+title "Missing FTS Files";
+	select *
+	from Audit.FTS_master
+except
+	select *
+	from Audit.u_raw;
+quit;
+
+*Creating Macro to define min/max in MSS dataset;
+*Note: Try First.varname instead of macro;
+*NOTE: try with ods /listing and output to refer instead of using SQL;
+
+  ods trace on;
+
+proc sql;
+title "Min/Max for MSS";
+   select max(scanned_sampid) into :maxscan
+   from Audit.MSS;
+   select min(scanned_sampid) into :minscan 
+   from Audit.MSS;
+quit;
+%put ids are: &maxscan;
+%put ids are: &minscan;
+
+  ods trace off;
+
+*proc print data=SQL.SQL_Results;
+*run;
+
+
+*Using created Macro to generate theoratical MSS list;
+
+data Audit.MSS_master;
+do Master=&minscan to &maxscan;
+output;
+end;
+run;
+
+*A query to filter missing MSS files;
+
+proc sql;
+title "Missing MSS Files";
+	select *
+	from Audit.MSS_master
+except
+	select *
+	from Audit.u_raw;
+quit;
