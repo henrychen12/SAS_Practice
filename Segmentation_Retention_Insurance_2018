@@ -1,0 +1,747 @@
+/****************************************************************************************************/
+/***Read in unknown number of data files with same type and data sturcture using wildcard***/
+/****************************************************************************************************/
+*Note: you must think about the issues in this analysis and include that in your interview;
+*Project starting point: look at your final output graph: what underlaying data do you need?;
+filename alltxt "C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance\RI*.TXT";
+DATA RI1;
+INFILE alltxt  TRUNCOVER ;
+INPUT  
+	subscriber_number   $  1-10
+	province $ 11-12
+	PCOD $ 13-18
+	CITY_name $  19-33
+	ADDRESS $  34-63
+	FIRST_NAME $  64-93
+	LAST_NAME $  94-123
+	CLIENT_ID  $ 124-125
+	client_Birhdate 126-130
+
+	;
+ RUN;
+
+/***USING PROC SORT TO DEDUP THE  RI DATA***/
+PROC SORT DATA=RI1 OUT=UNIQ_RI NODUPKEY;
+BY   subscriber_number; 
+RUN ;
+
+/***check the province values***/
+PROC FREQ DATA=UNIQ_RI  ;
+TABLES PROVINCE  /LIST MISSING OUT=PROV_FREQ  NOPRINT ;
+RUN ;
+
+/***using sql to count provinces***/
+PROC SQL;
+CREATE TABLE PROV_TEST AS 
+SELECT PROVINCE,COUNT(*) AS CNT 
+FROM UNIQ_RI  
+GROUP BY PROVINCE;
+QUIT ;
+
+/***USING DATA STEP TO COUNT PROVINCES***/
+PROC SORT DATA=UNIQ_RI;
+BY PROVINCE ;
+
+DATA PROV_CNT (KEEP=PROVINCE PROV_CNT );
+SET UNIQ_RI ;
+BY PROVINCE ;
+IF FIRST.PROVINCE THEN PROV_CNT=0;
+PROV_CNT+1;
+IF LAST.PROVINCE THEN OUTPUT;
+RUN ;
+
+/*** create variable of BUSINESS SECTOIN,
+      assign the value "AIO" to THE BUSINESS SECTION
+       create the driver birth year-month 
+       rename pcod to postcode
+       create FSA-FORWARD SORTATION AREA
+       convert the client number from character to numeric
+***/
+DATA RI2 (DROP= P P1 P2);
+SET UNIQ_RI  (RENAME=(pcod=postcode)  
+         WHERE=(NOT MISSING(subscriber_number))
+         );
+ *IF MISSING(subscriber_number) THEN DELETE;
+
+*IF ANYALPHA(first_name) GT 0 THEN DELETE ;
+ BUSINESS_SECTION='AIO';
+ DB_YM=PUT(client_Birhdate,MONYY7.);
+ FSA=SUBSTR(postcode,1,3);
+ CLT_ID=INPUT(CLIENT_ID,2.); 
+ /***JOBS ON NAMES***/
+P1=indexc(first_name,"&");
+P2=indexw(UPCASE(first_name),"AND");
+IF P1=0 AND P2>0 THEN P=P2;
+ELSE IF P1>0 AND P2=0 THEN P=P1 ;
+ELSE IF P1=0 AND P2=0 THEN P=0 ;
+ELSE P=MIN(P1,P2);
+
+IF P=0 THEN Fname=First_NAME;
+/**else if P2=1 and P1=0 then FNAME=First_NAME;*/
+ELSE IF UPCASE(First_NAME)=:'AND' AND P1=0 THEN FNAME=First_NAME;
+ELSE FNAME=SUBSTR(FIRST_NAME,1,(P-1));
+/**NOT AVAILABLE VARS ***/
+M_name='          ';
+spous_name='          ';
+SIN= '         ';
+RUN ;
+
+/***keep unique drive per subscriber_number ***/
+/***DATA STEP ***/
+PROC SORT DATA=RI2 OUT=RI_STD ;
+BY subscriber_number  DESCENDING CLIENT_ID;
+RUN ;
+
+DATA RI_UNIQ;
+SET RI_STD;
+BY subscriber_number  DESCENDING CLIENT_ID;
+IF FIRST.subscriber_number ;
+RUN ;
+
+
+/***WRITE THE SAS DATA TO TEXT FILE***/
+data _null_;
+set RI2  END=EOF;
+file 'C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance\RI.txt';
+IF _N_ =1 THEN DO ;
+PUT 'THIS IS THE HEADER OF THE TEXT FILE';
+END ;
+put @1 BUSINESS_SECTION
+    @4 subscriber_number  
+	@14 LAST_NAME
+	@33 Fname
+	@63 M_name  
+	@72 spous_name
+	@101 SIN  
+	@111 client_Birhdate
+	@121 address
+	@161 province
+	;
+IF EOF THEN DO ;
+PUT 'THIS IS THE FOOTER OF THE TEXT FILE';
+END ;
+run;
+
+/*Import the geographic file-semicolon delimited text file*/
+DATA AREA; 
+INFILE "C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance\area_infor.TXT"
+ DLM=';' MISSOVER ;
+
+INPUT pcd : $6. 
+      DIVISTION_name:  $2. 
+      DIVISION_number: 8.2 
+;
+RUN ;
+
+/*Import the automobile file-two tables with different data formats*/
+/*IMPORT THE SMALLER TABLE FROM ACCESS DATABASE*/
+PROC IMPORT TABLE="auto infor with short var length"
+ OUT=AUTO_DATA DBMS=ACCESS REPLACE ;
+ DATABASE="C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance\car description and loss data.MDB";
+RUN ;
+
+/*IMPORT THE BIGGER TABLE FROM ACCESS DATABASE*/
+PROC IMPORT TABLE="auto infor with short var length"
+ OUT=AUTO_DATA_B DBMS=ACCESS REPLACE ;
+ DATABASE="C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance\car description and loss data.MDB";
+RUN ;
+
+/**READ IN THE RETURNED CREDIT FILE***/
+DATA CRDT ;
+INFILE "C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance\CRDT.TXT" LRECL=2000;
+INPUT    @1     credit 6.2
+         @21     subscriber_number  $8.
+;
+RUN;
+
+/***READ IN THE CLAIMS DATA***/
+PROC IMPORT TABLE="Lossdata" OUT=CLAIMS DBMS=ACCESS REPLACE;
+DATABASE="C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance\car description and loss data.MDB";
+RUN; 
+
+DATA CLAIMS_NEW ;
+SET CLAIMS ;
+ACCIDENT_DATE_NEW=DATEPART(ACCIDENT_DATE) ;
+REPORT_DATE_NEW=DATEPART(REPORT_DATE);
+FORMAT ACCIDENT_DATE_NEW REPORT_DATE_NEW DATE9.; 
+A_D=PUT(ACCIDENT_DATE_New,DATE9.);
+RUN ;
+
+
+
+*********************************************************************************;
+
+
+
+
+/*jobs on the rate data*/
+filename RATE 'C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance\Rate Data\RATE_*.txt';
+/*read in multiple text files into one data set*/
+data RATE; 
+infile RATE  DSD MISSOVER  ;
+INPUT 
+BUSINESS_SECTION : $CHAR3.
+VEHICLE_NUMBER :  $CHAR3.
+EFFECTIVE_DATE : $CHAR8.
+EXPIRY_DATE: $CHAR8. 
+TRANSACTION_DATE: $CHAR8.
+VEHICLE_MODEL_YEAR: 5.0 
+CLIENT_CLASS : $CHAR1. 
+CLIENT_RECORD : 3.0
+CLIENT_DATE_OF_BIRTH : $CHAR2.
+DRIVER_TRAINING : $CHAR1. 
+LICENSE_DATE : 4.0 
+TRANSACTION_TYPE:  $CHAR20. 
+SUBSCRIPTION_YEAR : 4.0
+AREA_TYPE : $CHAR8. 
+DISCOUNT1 : $CHAR4. 
+DISCOUNT2 : $CHAR4. 
+DISCOUNT3 : $CHAR4. 
+DISCOUNT4 : $CHAR4. 
+CONVCTION : $CHAR2.
+COVER_TYPE : $CHAR4.
+COVERAGE_RATE : 8.2
+POSTAL_CODE : $CHAR6. 
+LEASE_BUY : $CHAR2.
+SUBSCRIPTION_NUMBER : $CHAR14.
+CARNUM: $char10.
+manu_yr: $char4.
+;
+RUN;
+
+/*********************************************************************/
+/*1.validation of KPI(key performance indicator)or dimension varibles*/ 
+/*  2.Reconile the numberic values*                                  */   
+/*********************************************************************/
+
+proc freq data=RATE ;
+tables BUSINESS_SECTION SUBSCRIPTION_YEAR DRIVER_TRAINING /missing;
+run;
+
+proc freq data=RATE  ;
+tables cover_type*DRVIER_CLASS/ LIST out=sec_cov_dt missing;
+run;
+
+proc sql;
+create table uniq_driver_rec as 
+select distinct DRIVER_RECORD,count(*) as cnt  
+from RATE
+group by DRIVER_RECORD;
+quit;
+
+proc print data=RATE;
+where substr(postAL_code,1,1) not in ('K','L','M','N','P');
+TITLE 'TEST SUBSCRIBER IN ONTARIO';
+RUN;
+
+/*PROC UNIVARIATE TO CHECK OUTLIERS TO OUTPUT THE HIGHEST 5 VALUES */
+/*AND THE LOWEST FIVE VALUES                                       */
+ODS SELECT EXTREMEOBS;
+
+PROC UNIVARIATE DATA=RATE;
+TITLE 'TEST THE EXTREME VALUES'; 
+ID subscription_number  VEHICLE_NUMBER ;
+VAR COVERAGE_RATE;
+RUN;
+
+
+
+/**************************************************/
+/*Numeric Meausres(Numeric Meausres):             */ 
+/*1.Proc means ;                                  */
+/*2.proc summary;                                 */
+/*3.proc sql;                                     */
+/*4.data step;                                    */
+/**************************************************/
+
+proc means sum data=RATE MISSING  N NMISS ;
+class business_section subscription_year cover_type;
+var COVERAGE_RATE;
+OUTPUT OUT=COV_RATE_SUM;
+run;
+
+proc summary data=RATE NWAY MISSING   ;
+class business_section subscription_year COVER_TYPE;
+var COVERAGE_RATE;
+output out=sumofRATE sum=;
+run;
+
+/*proc sql to summary the RATE*/
+proc sql;
+create table sumofRATE as 
+select business_section,subscription_year, cover_type,
+sum(COVERAGE_RATE) as SRATE 
+from RATE
+group by 1, 2, 3;
+quit;
+
+/* HOMEWORK :  data step to summary */
+
+/***********total of TERM UNIT********************************/
+data TERM_UNIT (keep=business_section subscription_year subscription_NUMBER
+ VEHICLE_NUMBER TERM_UNIT province ) ;
+set rate;
+if substr(postal_code,1,1) in ('K','L','M','N','P') THEN PROVINCE='ON' ;
+ELSE PROVINCE='XX';
+
+TERM_UNIT=ROUND(INTCK('DAY',INPUT(effective_date,YYMMDD8.),
+                 INPUT(expiry_date,YYMMDD8.))/365.25);
+run;
+
+/*HOMEWORK: USING SQL TO CALCULATE THE TERM UNIT */
+
+/*FOR EACH VEHICLE WE CAN ONLY TAKE IT AS ONE TERM_UNIT*/
+/*DATA STEP TO SELECT THE DISTINCT SUBSCRIPTION_NUMBER */
+
+DATA UNIQ_TERM1 (KEEP=BYVAR TERM_UNIT);
+SET TERM_UNIT;
+BYVAR=BUSINESS_SECTION||SUBSCRIPTION_YEAR||SUBSCRIPTION_NUMBER||VEHICLE_NUMBER;
+RUN; 
+
+PROC SORT DATA=UNIQ_TERM1;
+BY BYVAR;
+RUN;
+
+data UNIQ_TERM1;
+ set UNIQ_TERM1;
+ by byvar;
+ if first.byvar then output;
+ run;
+
+ /***********NUMERIC VALUES SUMMARY ***********/
+ PROC SQL;
+ CREATE TABLE RATE_SUM AS 
+ SELECT SUBSCRIPTION_NUMBER, VEHICLE_NUMBER, EFFECTIVE_DATE,
+ EXPIRY_DATE,SUM(COVERAGE_RATE) AS COVERAGE_RATE
+ FROM RATE 
+ GROUP BY 1,2,3,4;
+ QUIT ;
+
+PROC FREQ DATA=RATE;
+TABLES VEHICLE_NUMBER;
+RUN;
+
+PROC FREQ DATA=RATE;
+TABLES CLIENT_DATE_OF_BIRTH ;
+RUN;
+
+data RATE_newvar ;
+set RATE;
+IF CLIENT_DATE_OF_BIRTH  IN ('1','2','3','4','5','6','7','8','9','-1','0')
+  THEN DELETE ;
+age_of_client=SUBSCRIPTION_year-
+              input(('19'||COMPRESS(CLIENT_DATE_OF_BIRTH)),4.);
+
+*definition of age band;
+length  age_range $ 20;
+if age_of_client lt 26 then age_range='25 and less';
+else if  age_of_client lt 35 then age_range='26-34';
+else if  age_of_client lt 45 then age_range='35-44';
+else if  age_of_client lt 55 then age_range='45-54';
+else if  age_of_client lt 65 then age_range='55-64';
+else if  age_of_client lt 75 then age_range='less than 75';
+else age_range='75 and plder';
+
+*CREATE AGEOFCAR *PUT: apply format to first agruement and num to char;
+IF  VEHICLE_MODEL_YEAR IN (-2,-3) THEN  DELETE;
+AGEOFCAR=SUBSCRIPTION_YEAR-INPUT(('19'||PUT(VEHICLE_MODEL_YEAR,2.)),4.);
+if VEHICLE_NUMBER='*' then delete ;
+run;
+
+PROC SQL;
+CREATE TABLE DISC1 AS 
+SELECT  SUBSCRIPTION_NUMBER,VEHICLE_NUMBER,SUBSCRIPTION_YEAR,
+       EFFECTIVE_date,
+MAX(DISCOUNT1) AS DISC1,
+MAX(DISCOUNT2) AS DISC2,
+MAX(DISCOUNT3) AS DISC3,
+MAX(DISCOUNT4) AS DISC4
+FROM RATE
+GROUP BY SUBSCRIPTION_NUMBER,VEHICLE_NUMBER,SUBSCRIPTION_YEAR,
+         EFFECTIVE_date;
+QUIT;
+
+/***DISCOUNT COMBINATION***/
+DATA DISC3_1 (DROP=I DISC1-DISC4) ;
+SET DISC1;
+ARRAY DISCS(4) $  DISC1-DISC4;
+DO I=1 TO 4;
+IF NOT MISSING(DISCS(I)) THEN DO;
+ DISC=DISCS(I);
+ OUTPUT ;
+END ;
+END ;
+RUN ;
+
+PROC SORT DATA=DISC3_1 OUT=DISC3_2 NODUPRECS;
+BY SUBSCRIPTION_NUMBER VEHICLE_NUMBER SUBSCRIPTION_YEAR EFFECTIVE_DATE DISC;
+RUN ;
+
+PROC TRANSPOSE DATA=DISC3_2 OUT=DISCS3_3;
+BY SUBSCRIPTION_NUMBER VEHICLE_NUMBER SUBSCRIPTION_YEAR EFFECTIVE_DATE;
+VAR DISC;
+RUN ;
+
+DATA DISCS3_4;
+SET DISCS3_3;
+DISC_COMB=COL1||" "||COL2||" "||COL3||" "||COL4;
+RUN ;
+
+
+
+
+********************************************************************************;
+
+
+
+
+
+/*PRAPARE THE DATA SET FOR THE GRAPHS AND REPORT PROCEDURE*/
+
+/***MERGE THE LOSS WITH THE DISC COMBINATION***/
+PROC SQL;
+CREATE TABLE LOSS_COM AS 
+SELECT A.*,B.DISC_COMB
+FROM CLAIMS AS A LEFT JOIN DISCS3_4 AS B
+ON SUBSTR(A.Subscriber_number,5)=SUBSTR(B.SUBSCRIPTION_NUMBER,6) AND 
+   A.VEHICLE_NUMBER=B.VEHICLE_NUMBER AND 
+   A.EFFECTIVE_DATE=B.EFFECTIVE_DATE 
+;
+QUIT ;
+
+/***SUMMARIZE THE LOSS DATA BY DISCOUNT COMBINATION***/
+PROC SQL  outobs=5 ;
+CREATE TABLE LOSS_DISC AS 
+SELECT DISC_COMB,COUNT(*) AS LOSS_COUNT, 
+       SUM(LOSSPAYMENT) AS LOSS_PAYMENT 
+FROM LOSS_COM 
+GROUP BY DISC_COMB
+having not missing(DISC_COMB) 
+order by LOSS_PAYMENT desc ;
+QUIT ;
+
+/***SUMMARIZE THE TERMINATED SUBSCRIPTION NUMBER AND RATE***/
+PROC SQL;
+CREATE TABLE RATE_SUM AS 
+SELECT SUBSTR(TRANSACTION_DATE,1,6) AS YEAR_MONTH,
+       SUM(COVERAGE_RATE)*(-1) AS SUM_RATE,
+       COUNT(DISTINCT SUBSCRIPTION_NUMBER) AS TERMINATE_ACCOUNT 
+FROM RATE
+WHERE TRANSACTION_TYPE='TERMINATED' AND 
+      SUBSTR(TRANSACTION_DATE,1,4)='1996'
+GROUP BY YEAR_MONTH;
+QUIT ;
+
+/***SUMMARIZE THE LOSS BY AGE GROUP***/
+PROC SQL;
+CREATE TABLE UNIQ_AGE_RANGE AS 
+SELECT DISTINCT subscription_number,VEHICLE_NUMBER,EFFECTIVE_DATE,
+MAX(age_range)  AS age_range
+FROM RATE_NEWVAR 
+GROUP BY subscription_number,VEHICLE_NUMBER,EFFECTIVE_DATE;
+QUIT ;
+LIBNAME ER  "C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance";
+
+PROC SQL ;
+CREATE TABLE RATE_E AS 
+SELECT A.subscription_number,A.VEHICLE_NUMBER,A.EFFECTIVE_DATE,
+B.age_range,SUM(EARNED_RATE) AS E_RATE  
+FROM ER.RATE_EARNED AS A LEFT JOIN UNIQ_AGE_RANGE AS B 
+ON A.subscription_number=B.subscription_number AND 
+   A.VEHICLE_NUMBER=B.VEHICLE_NUMBER AND 
+   A.EFFECTIVE_DATE=B.EFFECTIVE_DATE 
+GROUP BY A.subscription_number,A.VEHICLE_NUMBER,A.EFFECTIVE_DATE,B.age_range;
+QUIT ; 
+
+/***MERGE THE RATE DATA WITH THE LOSS DATA***/
+DATA CLAIM_V1;
+SET CLAIMS ;
+SUBSCRIPTION_NUMBER='98076'||SUBSTR(Subscriber_number,5);
+RUN ;
+
+Data RATE_with_LOSS;
+length LOSSPAYMENT  3;
+If _N_ = 1 Then  Do;
+if 0 then ;
+Declare Hash MyLkup(HashExp:8,Dataset:'CLAIM_V1');
+MyLkup.DefineKey('SUBSCRIPTION_NUMBER','VEHICLE_NUMBER','EFFECTIVE_DATE');
+MyLkup.DefineData('LOSSPAYMENT');
+MyLkup.DefineDone();
+End;
+call missing(LOSSPAYMENT);
+Set RATE_E;
+Rc = MyLkup.Find();
+run; 
+
+PROC SQL;
+CREATE TABLE RATE_LOSS_BY_AGE AS 
+SELECT age_range,SUM(E_RATE) AS E_RATE,
+        SUM(LOSSPAYMENT) AS LOSSPAYMENT,
+       SUM(LOSSPAYMENT)/SUM(E_RATE) FORMAT=PERCENT7.2 AS RATIO 
+FROM RATE_with_LOSS
+GROUP BY age_range;
+QUIT ;
+
+/***PREPARE THE DATA FOR CHURN RATE***/
+DATA CRDT;
+SET CRDT ;
+SUBSCRIPTION_NUMBER='98076'||subscriber_number;
+RUN ;
+
+Data RATE_with_crdt (DROP=RC);
+length credit 3;
+If _N_ = 1 Then  Do;
+if 0 then ;
+Declare Hash MyLkup(HashExp:8,Dataset:'CRDT');
+MyLkup.DefineKey('SUBSCRIPTION_NUMBER');
+MyLkup.DefineData('credit');
+MyLkup.DefineDone();
+call missing(credit);
+End;
+Set RATE;
+Rc = MyLkup.Find();
+run; 
+
+DATA RATE_with_crdt;
+SET RATE_with_crdt;
+LENGTH CREDIT_GROUP  $ 13;
+IF CREDIT LE 580 THEN CREDIT_GROUP='0-580';
+ELSE IF CREDIT LE 650 THEN CREDIT_GROUP='581-650';
+ELSE CREDIT_GROUP='651 AND ABOVE';
+YR_MON=INPUT(TRANSACTION_DATE,yymmdd8.);
+YR_MONTH=PUT(YR_MON,MONYY7.);
+RUN ;
+
+PROC SQL;
+CREATE TABLE RATE_with_crdt_v2 AS 
+SELECT DISTINCT  YR_MONTH, TRANSACTION_TYPE, CREDIT_GROUP,
+count(distinct SUBSCRIPTION_NUMBER) AS account_cnt 
+FROM RATE_with_crdt
+WHERE SUBSTR(TRANSACTION_DATE,1,4)='1996'
+group by YR_MONTH, TRANSACTION_TYPE, CREDIT_GROUP;
+QUIT;
+
+PROC SORT DATA=RATE_with_crdt_v2;
+BY YR_MONTH  CREDIT_GROUP TRANSACTION_TYPE ;
+RUN ;
+
+PROC TRANSPOSE DATA=RATE_with_crdt_v2 OUT=RATE_with_crdt_v3;
+BY YR_MONTH  CREDIT_GROUP;
+ID TRANSACTION_TYPE;
+VAR account_cnt ;
+RUN ;
+
+DATA RATE_with_crdt_v3;
+SET RATE_with_crdt_v3 ;
+CHURN_RATE=ROUND(TERMINATED/ACTIVE,.01);
+FORMAT CHURN_RATE PERCENT7.2;
+RUN ;
+
+
+
+********************************************************************************;
+
+
+
+
+
+/***macro to run the linked reports for each month and credit group**/
+*Dedup here to remove contract renewals???;
+proc sort data= RATE_with_crdt;
+by YR_MONTH  CREDIT_GROUP;
+where substr(TRANSACTION_DATE,1,4) = '1996'; 
+run ;
+
+data samp_data_v1;
+set RATE_with_crdt;
+by YR_MONTH  CREDIT_GROUP; 
+if first.CREDIT_GROUP then cnt=0;
+cnt+1;
+if cnt le 5 then output;
+run ;
+
+
+%macro linkreprt;
+
+data Rate_with_crdt_v4;
+set Rate_with_crdt_v3;
+loops=_n_;
+run;
+
+proc sql;
+select max(loops) into: loops
+from Rate_with_crdt_v4;
+quit;
+
+%put &loops;
+
+%do i=1 %to &loops;
+proc sql;
+select YR_MONTH,CREDIT_GROUP  into :months, :crdt_group
+from   Rate_with_crdt_v4
+where loops=&i;
+quit;
+
+data temp_&i ;
+set samp_data_v1;
+where YR_MONTH="&months" and credit_group="&crdt_group";
+run ;
+
+ods listing close;
+
+ods html
+file="C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance\Drill\%trim(&months)_%trim(&crdt_group).html"
+style=sasweb;
+proc print data=temp_&i(obs=5);
+title "The Sample Data for Month &months and Credit Group &crdt_group";
+title2 "Run as of %qsysfunc(today(),worddate.)";
+run;
+ods html close;
+ods listing ;
+
+%end;
+%mend;
+%linkreprt;
+
+
+
+*****************************************************************************;
+
+
+
+
+
+
+GOPTIONS reset=all Device = ActiveX;
+ODS LISTING CLOSE;
+ODS tagsets.HTMLpanel Path="C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance\Graph"
+BODY = "GRAPHS_ALL.html" STYLE=SASWEB;
+%let embedded_titles=yes;
+/* Start the Panel 1 */
+ODS tagsets.HTMLpanel event = panel (start);
+/* Start the Row 1 */
+ODS tagsets.HTMLpanel event = row_panel (start);
+/* Start the Column 1 */
+ODS tagsets.HTMLpanel event = column_panel (start);
+
+/***graphs for the first quardrant***/
+/***set up the options ***/
+goptions reset=all device=ActiveX xpixels=450  ypixels=450  ;
+axis1 offset=( 0 , 0 ) minor=NONE 
+      label=( 'Discount Combination' h= 1.0  f=swiss) 
+      value=(h= 1.0   f=swiss );
+axis2 label=( 'Loss Count'  h= 1.0  f=swiss1) 
+      value=(h= 1.0  f=swiss)
+      minor=(number= 1 )/**number of ticks**/
+      offset=(0, 0 ) order=(20 to 200 by 20);
+axis3 label=( 'Loss Pay'  h= 1.0  f=swiss) 
+      value=(h= 1.0  f=swiss) offset=(0, 0 ) 
+      major=none minor=none
+      order=(2000 to 20000 by 2000);
+symbol1 i=j v=dot c=yellow h=1.0 w=3  pointlabel=(h=0.8  c=green); 
+symbol2 i=j v=dot c=blue h=1.0 w=3 pointlabel=(h=0.8  c=blue); 
+legend1 label=none 
+      value=(h=0.7 color=blue font=swiss 'Loss Count')
+      position=(bottom center outside) mode=reserve cborder=white;
+legend2 label=none 
+      value=(h=0.7 color=blue  font=swiss 'Loss Payment')
+      position=(bottom center outside) mode=reserve cborder=white;
+
+proc gplot  data=loss_disc ;
+title h=10pt f=swiss "Loss data by Discount Combination"  ;
+format loss_payment dollar12.;
+plot loss_count*disc_COMB=1 / overlay haxis=axis1 vaxis=axis2  legend=legend1 cframe=white  ;
+plot2 LOSS_PAYMENT*disc_COMB=2 /overlay vaxis=axis3 legend=legend2 cframe=white;
+run;
+quit;
+
+/* Close the Column 1 */
+ODS tagsets.HTMLpanel event = column_panel (finish);
+/* Start the Column 2 */
+ODS tagsets.HTMLpanel event = column_panel (start);
+GOPTIONS reset=all;
+/***graphs for the second quardrant***/
+/***set up the options ***/
+goptions reset=all device=ActiveX xpixels= 450  ypixels= 450 ;
+axis1 offset=( 0 , 0 ) minor=NONE 
+      label=( 'Year_Month' h= 1.0  f=swiss) 
+      value=(h= 0.6   f=swiss );
+axis2 label=( 'Sum of Rate'  h= 0.5  f=swiss1) 
+      value=(h= 0.5  f=swiss)
+      minor=(number= 1 )/**number of ticks**/
+      offset=(0, 0 ) ;
+axis3 label=( 'Cancelled Account'  h= 0.5  f=swiss) 
+      value=(h= 0.5  f=swiss) offset=(0, 0 ) 
+      major=none minor=none;
+symbol1 i=j v=dot c=yellow h=1.0 w=3  pointlabel=(h=0.8  c=green); 
+symbol2 i=j v=dot c=blue h=1.0 w=3 pointlabel=(h=0.8  c=blue); 
+pattern color=green;
+
+proc gbarline data=RATE_SUM ;
+title h=10pt f=swiss "Profits and Cancelled Counts by Year Month"  ;
+bar  year_month/maxis=axis1 raxis=axis2 sumvar=SUM_RATE type=sum  cframe=white;
+plot /sumvar=TERMINATE_ACCOUNT raxis=axis3 type=sum  ;
+run;
+quit;
+
+/* Close the Column 2 */
+ODS tagsets.HTMLpanel event = column_panel (finish);
+ODS tagsets.HTMLpanel event = row_panel (finish);
+ODS tagsets.HTMLpanel event = panel (FINISH);
+
+/* Start the Column 3 */
+ODS tagsets.HTMLpanel event = panel (start);
+ODS tagsets.HTMLpanel event = row_panel (start);
+ODS tagsets.HTMLpanel event = column_panel (start);
+
+goptions reset=all device=ActiveX xpixels= 450  ypixels= 450 ;
+axis1 offset=( 0, 0) minor=NONE 
+      label=( 'Age_Range' h= 0.7  f=swiss) 
+      value=(h= 0.7   f=swiss ) ;
+axis2 label=( 'Rate'  h= 0.7  f=swiss) 
+      value=(h= 0.6  f=swiss)
+      minor=none/**number of ticks**/
+      offset=(0, 0 ) ;
+axis3 label=( 'Ratio'  h= 0.7  f=swiss) 
+      value=(h= 0.6  f=swiss) offset=(0, 0 ) 
+      major=none minor=none;
+symbol1 i=j v=dot c=yellow h=0.6 w=3  pointlabel=(h=0.7 c=green); 
+symbol2 i=j v=dot c=blue h=0.6 w=3 pointlabel=(h= 0.7  c=blue); 
+
+proc gbarline data=rate_loss_by_age;
+bar age_range/sumvar=e_rate maxis=axis1 raxis=axis2 type=sum cframe=white;
+plot /sumvar=ratio type=sum raxis=axis3 ;
+title h=10pt f=swiss "Rate and ratio by age range"  ;
+run;
+quit;
+
+/* Close the Column 3 */
+ODS tagsets.HTMLpanel event = column_panel (finish);
+/* Close the Row 1 */
+ODS tagsets.HTMLpanel event = column_panel (start);
+/* Close the Panel 1 */
+goptions reset=all device=ActiveX xpixels= 450  ypixels= 450 ;
+title h=10pt f=swiss "Churn Rate by Credit Groups"  ;
+
+proc report data=RATE_with_crdt_v3 nowd split="/";
+column yr_month credit_group churn_rate active terminated;
+define yr_month/"Month" left ;
+define credit_group/"Credit Group" center ;
+define churn_rate/"Churn Rate" center format=percent11.2;
+define active/"Active /Account Count" right ;
+define terminated/"Cancelled /Account Count" right ;
+compute credit_group;
+hlink="C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance\Drill\"||trim(YR_MONTH)||
+          "_"||trim(credit_group)||".html";
+call define (_col_, 'url',hlink);
+call define (_col_, 'Style', 'style={flyover="Click to see '||strip(credit_group)||
+                ' report"}');
+endcomp;
+ 
+run;
+
+ODS tagsets.HTMLpanel event = column_panel (finish);
+ODS tagsets.HTMLpanel event = row_panel (finish);
+
+ODS TAGSETS.HTMLPANEL EVENT=PANEL(FINISH);
+ODS TAGSETS.HTMLPANEL CLOSE;
