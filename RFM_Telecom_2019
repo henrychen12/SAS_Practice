@@ -1,0 +1,84 @@
+%let folder=%str(C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\RFM Project);
+libname RFM "&folder";
+ proc means data=RFM.RFM_tran min max n nmiss;
+	 var buy_amount buy_date;
+	 run;
+proc freq data=RFM.RFM_tran; 
+table buy_date/missing; 
+run;
+data RFM;
+ set RFM.RFM_tran;
+ if buy_amount gt 0; 
+ if buy_date ge "13Jun2010"d;
+run;
+proc sort data=RFM nodupkey out=recency dupout=test;
+     by cust_ID descending Buy_date;
+run;
+
+
+data recency;
+set recency;
+by cust_ID descending Buy_date;
+ if first.cust_ID;
+ recency_month=round(("12Jun2012"d-buy_date)/30.42,1);
+ if recency_month gt 16 then r_code="1"; else
+ if recency_month gt 8 then r_code="2"; 
+   else r_code="3";
+ run;
+
+
+ proc freq data=RFM;
+ table cust_ID/ out=frequency(drop= percent rename=(count=freq));
+ run;
+ proc means data=frequency min max;
+ var freq;
+ run;
+ data freq;
+ set frequency;
+ if freq le 4 then f_code="1"; else
+ if freq le 7 then f_code="2"; 
+  else f_code="3"; 
+ run;
+ proc means data=RFM nway noprint;
+ class cust_ID;
+ var buy_amount;
+output out=money(drop=_Type_ _freq_) sum=money;
+run;
+
+proc means data=money min max q1 q3 median;
+var money;
+run;
+
+
+data money;
+set money;
+if money le 200.00 then m_code="1"; else
+if money le 600.00 then m_code="2";
+else m_code="3";
+run;
+
+proc sort data=money ;
+by cust_ID;
+run;
+proc sort data=freq ;
+by cust_ID;
+run;
+proc sort data=recency;
+by cust_ID;
+run;
+data RFM.RFM_CODE;
+merge recency freq money;
+by cust_ID;
+RFM_CODE=strip(r_code)||strip(f_code)||strip(m_code);
+run;
+
+
+
+proc tabulate data=RFM.RFM_CODE;
+class RFM_CODE;
+var recency_month freq money;
+table rfm_code all="Total", recency_month=""*(mean="Recency(Months)")
+            freq=""*(mean="Freq(Times)"*f=comma12.)
+			money=""*(mean="Money"*f=dollar12.2 n="Num of Cust")
+;
+run;
