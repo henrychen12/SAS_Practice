@@ -1,5 +1,5 @@
 /****************************************************************************************************/
-/***Read in unknown number of data files with same type and data sturcture using wildcard***/
+/***Read in unknown number of data files with same type and data structure using wildcard***/
 /****************************************************************************************************/
 *Read in client data with wildcard;
 
