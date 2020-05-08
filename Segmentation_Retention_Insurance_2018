@@ -1,8 +1,8 @@
 /****************************************************************************************************/
 /***Read in unknown number of data files with same type and data sturcture using wildcard***/
 /****************************************************************************************************/
-*Note: you must think about the issues in this analysis and include that in your interview;
-*Project starting point: look at your final output graph: what underlaying data do you need?;
+*Read in client data with wildcard;
+
 filename alltxt "C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\Insurance\RI*.TXT";
 DATA RI1;
 INFILE alltxt  TRUNCOVER ;
