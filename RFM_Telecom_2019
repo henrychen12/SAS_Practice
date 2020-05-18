@@ -1,84 +1,128 @@
-%let folder=%str(C:\Users\henrychen\Dropbox\Work\SAS Projects and HW\RFM Project);
-libname RFM "&folder";
- proc means data=RFM.RFM_tran min max n nmiss;
-	 var buy_amount buy_date;
+%let mydata=%str(C:\Users\henrychen\Dropbox\Work\SAS Telecom\Lec 3);
+libname mydata "&mydata";
+proc sort data=mydata.surv_data out=mydata.surv_data2(drop=monthly_fee);
+by customer_ID;
+run;
+proc sort data=mydata.tel out=mydata.tel2;
+by customer_ID;
+run;
+/*data tel_data;
+merge surv_data(in=a) tel(in=b);  do not work, why?
+by customer_ID;
+run;
+*/
+
+proc sql;
+ create table mydata.tel_data as
+   select a.*, b.*
+   from mydata.surv_data2 as a ,
+        mydata.tel2 as b
+   where input(a.customer_ID, best12.)=b.customer_ID;
+   quit;
+*input( ) turns char to NUM !!! PUT( ) does the reverse;
+
+
+*you need to use this to make a distribution of population 
+in order to come up with a standard;
+ proc univariate data=mydata.tel_data ;
+    var TOT_REV_AMT; *CTS variable in VAR stmt;
+	histogram TOT_REV_AMT/normal(mu=est sigma=est); *draw a histogram graph;
+	run; *a normal distribution is used to fit out data (use normal option);
+	*mu: mean, sigma: dispersion, EST: estimated;
+
+
+
+	*segmentation by AGE;
+data mydata.tel_data_1;
+	set mydata.tel_data;
+	if tot_rev_amt lt 0 then rev_class="1: <$0"; else
+	if tot_rev_amt le 25 then rev_class="2: $0-$25"; else
+	if tot_rev_amt le 45 then rev_class="3: $25.01-$45"; else
+	if tot_rev_amt le 70 then rev_class="4: $45.01-$70"; else
+	if tot_rev_amt le 100 then rev_class="5: $70.1-$100"; 
+     else rev_class="6: $100+";
+Run;
+
+
+
+*distribution of AGE;
+ proc univariate data=mydata.tel_data_1 ;
+    var cust_age;
+	histogram cust_age/normal(mu=est sigma=est);
+	run;
+
+
+
+*segmentation by revenue and Age;
+data mydata.tel_data_2;
+	set mydata.tel_data;
+	length rev_class age_class $ 30.;
+	if tot_rev_amt lt 0 then rev_class="1: <$0"; else
+	if tot_rev_amt le 25 then rev_class="2: $0-$25"; else
+	if tot_rev_amt le 45 then rev_class="3: $25.01-$45"; else
+	if tot_rev_amt le 70 then rev_class="4: $45.01-$70"; else
+	if tot_rev_amt le 100 then rev_class="5: $70.1-$100"; 
+     else rev_class="6: $100+"; 
+	 if cust_age le 24 then age_class="1: <=24"; else
+     if cust_age le 30 then age_class="2: <=30"; else
+	 if cust_age le 45 then age_class="3: <=45"; else
+	 if cust_age le 60 then age_class="4: <=60"; else age_class="5: 60+";
 	 run;
-proc freq data=RFM.RFM_tran; 
-table buy_date/missing; 
-run;
-data RFM;
- set RFM.RFM_tran;
- if buy_amount gt 0; 
- if buy_date ge "13Jun2018"d;
-run;
-proc sort data=RFM nodupkey out=recency dupout=test;
-     by cust_ID descending Buy_date;
-run;
 
 
-data recency;
-set recency;
-by cust_ID descending Buy_date;
- if first.cust_ID;
- recency_month=round(("12Jun2018"d-buy_date)/30.42,1);
- if recency_month gt 16 then r_code="1"; else
- if recency_month gt 8 then r_code="2"; 
-   else r_code="3";
- run;
-
-
- proc freq data=RFM;
- table cust_ID/ out=frequency(drop= percent rename=(count=freq));
- run;
- proc means data=frequency min max;
- var freq;
- run;
- data freq;
- set frequency;
- if freq le 4 then f_code="1"; else
- if freq le 7 then f_code="2"; 
-  else f_code="3"; 
- run;
- proc means data=RFM nway noprint;
- class cust_ID;
- var buy_amount;
-output out=money(drop=_Type_ _freq_) sum=money;
-run;
-
-proc means data=money min max q1 q3 median;
-var money;
-run;
-
-
-data money;
-set money;
-if money le 200.00 then m_code="1"; else
-if money le 600.00 then m_code="2";
-else m_code="3";
-run;
-
-proc sort data=money ;
-by cust_ID;
-run;
-proc sort data=freq ;
-by cust_ID;
-run;
-proc sort data=recency;
-by cust_ID;
-run;
-data RFM.RFM_CODE;
-merge recency freq money;
-by cust_ID;
-RFM_CODE=strip(r_code)||strip(f_code)||strip(m_code);
+proc tabulate data=mydata.tel_data_2;
+class age_class rev_class market;
+table age_class= "Age" market="Region", rev_class=""*(n="Num of customers" colpctn="Percent of Row")  all="total";
 run;
 
 
 
-proc tabulate data=RFM.RFM_CODE;
-class RFM_CODE;
-var recency_month freq money;
-table rfm_code all="Total", recency_month=""*(mean="Recency(Months)")
-            freq=""*(mean="Freq(Times)"*f=comma12.)
-			money=""*(mean="Money"*f=dollar12.2 n="Num of Cust")
+*this section is for reporting;
+
+proc format;
+picture pctf
+low-high="009.99%"
 ;
 run;
+
+proc tabulate data=mydata.tel_data_2;
+class age_class rev_class market;
+table age_class= "Age" market="Region"/*ROW*/, /*and Column seperated by ,*/
+rev_class=""*(n="Num of customers" colpctn="Percent of Row"*f=pctf.)  all="total";
+run;
+
+*n is nested for rev_class, colpctn is nested for rev_class too;
+
+*the "" is for a blank header for rev_class, it is so obvious that we omitted the header;
+
+*PROC Tabulate: the overall format is SET !!! If you see some report
+similar to this during an interview you should defintely use it;
+
+*Table statement is the main stmt to design the report, you have 
+3D designs where each are seperated by ,;
+
+*the first dimension is called page, the second dimension is called ROW,
+the third is called Column;
+
+*There's stacked arrangement: seperated by space;
+
+*There is nested arrangement: seperated by *;
+
+*ALL variables appearing in Table statement must also appear in either CLASS or BY stmt;
+
+*NUM var in BY stmt, CHAR var in CLASS stmt;
+
+*the f is for referring to a format;
+
+*The ALL= option will create an overall column for row total
+To do column total you need to check coding from RFM project...;
+
+
+
+
+*HW: we have a percentage here but you need to add an % 
+(Hint: use F= option with a PROC FORMAT and picture statement);
+
+
+*HW: the table is completed, but you need to do PROFILING and give names to each segment
+ie: % of high value customers in each region...;
