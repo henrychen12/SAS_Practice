@@ -514,7 +514,7 @@ CREATE TABLE RATE_with_crdt_v2 AS
 SELECT DISTINCT  YR_MONTH, TRANSACTION_TYPE, CREDIT_GROUP,
 count(distinct SUBSCRIPTION_NUMBER) AS account_cnt 
 FROM RATE_with_crdt
-WHERE SUBSTR(TRANSACTION_DATE,1,4)='1996'
+WHERE SUBSTR(TRANSACTION_DATE,1,4)='2017'
 group by YR_MONTH, TRANSACTION_TYPE, CREDIT_GROUP;
 QUIT;
 
@@ -546,7 +546,7 @@ RUN ;
 *Dedup here to remove contract renewals???;
 proc sort data= RATE_with_crdt;
 by YR_MONTH  CREDIT_GROUP;
-where substr(TRANSACTION_DATE,1,4) = '1996'; 
+where substr(TRANSACTION_DATE,1,4) = '2017'; 
 run ;
 
 data samp_data_v1;
