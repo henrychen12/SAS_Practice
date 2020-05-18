@@ -120,9 +120,9 @@ To do column total you need to check coding from RFM project...;
 
 
 
-*HW: we have a percentage here but you need to add an % 
+*we have a percentage here but you need to add an % 
 (Hint: use F= option with a PROC FORMAT and picture statement);
 
 
-*HW: the table is completed, but you need to do PROFILING and give names to each segment
+*the table is completed, but you need to do PROFILING and give names to each segment
 ie: % of high value customers in each region...;
