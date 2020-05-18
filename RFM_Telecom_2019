@@ -9,7 +9,7 @@ run;
 data RFM;
  set RFM.RFM_tran;
  if buy_amount gt 0; 
- if buy_date ge "13Jun2010"d;
+ if buy_date ge "13Jun2017"d;
 run;
 proc sort data=RFM nodupkey out=recency dupout=test;
      by cust_ID descending Buy_date;
@@ -20,7 +20,7 @@ data recency;
 set recency;
 by cust_ID descending Buy_date;
  if first.cust_ID;
- recency_month=round(("12Jun2012"d-buy_date)/30.42,1);
+ recency_month=round(("12Jun2017"d-buy_date)/30.42,1);
  if recency_month gt 16 then r_code="1"; else
  if recency_month gt 8 then r_code="2"; 
    else r_code="3";
