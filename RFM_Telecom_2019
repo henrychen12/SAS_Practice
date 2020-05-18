@@ -1,4 +1,4 @@
-%let mydata=%str(C:\Users\henrychen\Dropbox\Work\SAS Telecom\Lec 3);
+%let mydata=%str(C:\Users\henrychen\Dropbox\Work);
 libname mydata "&mydata";
 proc sort data=mydata.surv_data out=mydata.surv_data2(drop=monthly_fee);
 by customer_ID;
