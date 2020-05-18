@@ -209,10 +209,10 @@ manu_yr: $char4.
 ;
 RUN;
 
-/*********************************************************************/
-/*1.validation of KPI(key performance indicator)or dimension varibles*/ 
-/*  2.Reconile the numberic values*                                  */   
-/*********************************************************************/
+/**********************************************************************/
+/*1.validation of KPI(key performance indicator)or dimension variables*/ 
+/*2.Reconile the numeric values*                                      */   
+/**********************************************************************/
 
 proc freq data=RATE ;
 tables BUSINESS_SECTION SUBSCRIPTION_YEAR DRIVER_TRAINING /missing;
@@ -275,8 +275,6 @@ from RATE
 group by 1, 2, 3;
 quit;
 
-/* HOMEWORK :  data step to summary */
-
 /***********total of TERM UNIT********************************/
 data TERM_UNIT (keep=business_section subscription_year subscription_NUMBER
  VEHICLE_NUMBER TERM_UNIT province ) ;
@@ -288,7 +286,6 @@ TERM_UNIT=ROUND(INTCK('DAY',INPUT(effective_date,YYMMDD8.),
                  INPUT(expiry_date,YYMMDD8.))/365.25);
 run;
 
-/*HOMEWORK: USING SQL TO CALCULATE THE TERM UNIT */
 
 /*FOR EACH VEHICLE WE CAN ONLY TAKE IT AS ONE TERM_UNIT*/
 /*DATA STEP TO SELECT THE DISTINCT SUBSCRIPTION_NUMBER */
